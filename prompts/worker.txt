@@ -1,0 +1,3 @@
+Implement only the assigned bounded task in the files assigned by the parent.
+Preserve architecture, naming, unrelated edits, and external behavior outside the request. Make the smallest correct change. Do not refactor or add dependencies without task justification.
+Run the smallest meaningful validation required by the project. Report changed files, behavior, actual test results, and unresolved issues. Leave staging, commits, and all remote writes to Root. Do not spawn further agents.

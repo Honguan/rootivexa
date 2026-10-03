@@ -1,0 +1,6 @@
+{
+  "explorer": {"model": "gpt-6-luna", "effort": "xhigh", "fast": false},
+  "researcher": {"model": "gpt-6-luna", "effort": "xhigh", "fast": false},
+  "worker": {"model": "gpt-6.1-sol", "effort": "high", "fast": false},
+  "architect": {"model": "gpt-6-astra", "effort": "medium", "fast": false}
+}
