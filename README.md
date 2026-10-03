@@ -1,5 +1,7 @@
 # Codex 全域原生角色安裝器
 
+開源套件 **1.0.0**，採 [MIT License](LICENSE)。本專案為社群工具，與 OpenAI 無隸屬關係。
+
 Windows 一鍵安裝／解除安裝四種原生子代理。可個別設定模型與推理強度；**Fast 統一跟隨 Root**。不需要獨立 CLI 執行器，不新增 Hook、MCP 或 Skill。
 
 ## 預設角色
@@ -23,6 +25,8 @@ Root 可使用任何具備原生子代理工具的模型。本工具保留既有
 4. **status.cmd** 查看設定；**uninstall.cmd** 解除安裝。
 
 安裝器不下載套件、不修改登入資訊。安裝只需 Python；角色執行由現有 Codex 的原生工具負責。
+
+模型預設是可編輯的範例，請依帳戶與宿主支援範圍修改 `settings.json`，再執行安裝。使用角色不需要 Token Optimizer、Ponytail 或其他外掛；有既有最佳化工具時才使用。
 
 只預覽、不寫入：
 
@@ -87,6 +91,21 @@ Luna Explorer 在自己的範圍內使用既有最佳化工具，每批並行最
 寫入失敗會回復；意外中斷由 `pending.json` 記錄，下次操作先復原。若檔案另有外部修改，停止並保留現況與快照。有效的全域 `AGENTS.override.md`、`agents.enabled=false`、同名角色衝突或規則超出載入容量都會停止安裝，不自行改動原設定。
 
 更新或解除安裝前請結束舊子代理，完成後開啟新對話；安裝鎖只協調安裝器，不追蹤原生代理。若曾安裝舊版獨立 CLI 方案，先用原安裝包解除安裝；新版不自動改寫舊版安裝紀錄。
+
+更新原生角色版：將自訂 `settings.json` 與 `prompts/` 保留到新版安裝包，再執行 `install.cmd`。套件版本與 manifest schema 不同；本版維持 schema 2。
+
+## 建立開源發佈包
+
+```powershell
+py -3 -m unittest discover -s tests -q
+py -3 build_release.py
+Get-FileHash dist/codex-orchestration-1.0.0.zip -Algorithm SHA256
+Get-Content dist/codex-orchestration-1.0.0.zip.sha256
+```
+
+輸出包含 ZIP 與同名 `.zip.sha256`；核對兩者的雜湊值後即可分享。ZIP 使用明列的 20 個檔案，包含完整原始碼、MIT 授權、文件及測試。固定 ZIP 時間與權限，相同來源在相同 Python／zlib 環境可產生相同位元組。
+
+打包不讀取全域 Codex 目錄，不包含登入資訊、安裝備份、聊天記錄、`.git`、快取或本機最佳化資料。`dist/` 是生成檔案，不提交到 Git。修改或回報問題時，請附 Python／Codex 版本、重現步驟與測試結果，勿附認證資料。發佈紀錄見 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 限制與驗證
 
