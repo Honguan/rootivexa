@@ -1,28 +1,28 @@
-# Codex 全域角色安裝器
+# Codex 全域原生角色安裝器
 
-Windows 一鍵安裝／解除安裝四種角色。各角色透過獨立 Codex CLI 程序執行，可分別設定模型、推理強度及 Fast。只用 Python 標準函式庫，不新增 Hook、MCP 或 Skill。
+Windows 一鍵安裝／解除安裝四種原生子代理。可個別設定模型與推理強度；**Fast 統一跟隨 Root**。不需要獨立 CLI 執行器，不新增 Hook、MCP 或 Skill。
 
 ## 預設角色
 
-| 角色 | 模型 | 推理強度 | Fast | 分工 |
-| --- | --- | --- | --- | --- |
-| explorer | gpt-6-luna | xhigh | 關 | 跨檔案探索，回報證據 |
-| researcher | gpt-6-luna | xhigh | 關 | 文件查詢，附來源與版本 |
-| worker | gpt-6.1-sol | high | 關 | 指定範圍的實作與驗證 |
-| architect | gpt-6-astra | medium | 關 | 高影響方案與重大修改審查 |
+| 角色 | 模型 | 推理強度 | 分工 |
+| --- | --- | --- | --- |
+| explorer | gpt-6-luna | xhigh | 跨檔案探索與證據整理 |
+| researcher | gpt-6-luna | xhigh | 文件查詢，附來源與版本 |
+| worker | gpt-6.1-sol | high | 指定範圍的實作與驗證 |
+| architect | gpt-6-astra | medium | 高影響方案與重大修改審查 |
 
-Root 沒有模型或推理強度限制，只須能執行本機命令。本機原有 Root 設定保持不變。所有角色合計最多同時執行 **3 個程序**；可同時有 3 個 Luna，並非每個角色各有 3 個名額。
+Root 可使用任何具備原生子代理工具的模型。本工具保留既有 Root 模型、Fast、權限及並行設定。
 
 ## 一鍵操作
 
-先備條件：Windows、Python 3.11 以上（`py -3 --version`），以及已可登入使用的官方 Codex CLI。已驗證 CLI 0.159.2 與 0.160.0；其他版本須重新驗證。
+先備條件：Python 3.11 以上（`py -3 --version`），以及支援原生自訂角色的 Codex。測試版本為 Codex 0.159.2／0.160.0。
 
-1. 解壓整個安裝包。
-2. 雙擊 **install.cmd**。完成後開啟新的 Codex 對話。
-3. 雙擊 **configure.cmd** 修改 `settings.json`，儲存後再次執行 **install.cmd** 套用。
+1. 解壓整個安裝包，雙擊 **install.cmd**。
+2. 完成後開啟新的 Codex 對話，載入四個原生角色及分工規則。
+3. **configure.cmd** 編輯 `settings.json`；儲存後再次執行 **install.cmd** 套用。
 4. **status.cmd** 查看設定；**uninstall.cmd** 解除安裝。
 
-安裝器不下載 Python 或 Codex，也不變更登入資訊。若無法自動找到 CLI，可在啟動安裝器及 Codex 的環境中，將 `CODEX_ORCHESTRATION_CODEX` 設為官方 `codex.exe` 完整路徑。執行角色時也可提供 `--codex`。
+安裝器不下載套件、不修改登入資訊。安裝只需 Python；角色執行由現有 Codex 的原生工具負責。
 
 只預覽、不寫入：
 
@@ -31,88 +31,72 @@ py -3 manage.py install --dry-run
 py -3 manage.py uninstall --dry-run
 ```
 
-只有全域安裝模式。預設位置為 `%USERPROFILE%\.codex`；若已設定絕對路徑的 `CODEX_HOME`，使用該全域目錄。沒有專案安裝選項。
+只有全域模式。預設為 `%USERPROFILE%\.codex`；若已設定絕對路徑的 `CODEX_HOME`，使用該全域目錄。沒有專案安裝選項。
 
 ## 安裝結構
 
 ```text
 %USERPROFILE%\.codex\
 ├─ AGENTS.md                         # 追加有起訖標記的簡短分工規則
+├─ agents\
+│  ├─ explorer.toml
+│  ├─ researcher.toml
+│  ├─ worker.toml
+│  └─ architect.toml
 └─ codex-orchestration\
-   ├─ runner.py                      # 獨立 CLI 執行器
-   ├─ agents\
-   │  ├─ explorer.toml
-   │  ├─ researcher.toml
-   │  ├─ worker.toml
-   │  └─ architect.toml
-   ├─ manifest.json                  # 安裝紀錄、管理範圍、雜湊
-   ├─ lock
-   ├─ slots\                         # 全域共用 3 個執行名額
-   ├─ backups\*.json                 # 安裝／更新／解除安裝快照
-   └─ runs\時間-識別碼\
-      ├─ result.md                   # 角色最後回覆
-      ├─ events.jsonl                # CLI 事件
-      ├─ stderr.log
-      └─ status.json
+   ├─ manifest.json                  # 安裝紀錄、管理範圍與雜湊
+   ├─ lock                           # 安裝／更新／移除操作鎖
+   └─ backups\*.json                 # 修改前快照
 ```
 
-不寫入 `config.toml` 或原生 `agents\` 目錄，不覆蓋原生同名角色。原有 Token Optimizer、Ponytail、Hook、MCP 與 Root 設定均保留。
+安裝只寫四個角色、AGENTS 規則及安裝紀錄；不修改 `config.toml`。既有 Token Optimizer、Ponytail、Hook、MCP 與其他角色檔案保持不變。
+
+同名的內建 Explorer／Worker 會採用這次安裝的自訂角色設定；若已有同名的使用者角色（含不同檔名或 `config.toml` 宣告），安裝器會停止，避免覆蓋。
 
 ## 手動設定
 
-`settings.json` 每個角色都包含三個欄位，例如：
+`settings.json` 每個角色僅包含：
 
 ```json
-"worker": {"model": "gpt-6.1-sol", "effort": "high", "fast": true}
+"worker": {"model": "gpt-6.1-sol", "effort": "high"}
 ```
 
-`fast: true` 使用 Fast；`false` 明確使用 Standard，不繼承 Root 的 Fast。模型名稱及 effort 必須由帳戶／CLI 實際支援；安裝器檢查格式，不以付費請求驗證模型資格。執行失敗不會自動更換模型。
+已移除 `fast` 欄位；生成的角色 TOML 不含 `service_tier`。Fast 使用 Root 的既有設定。模型與 effort 仍須由帳戶及執行環境支援，安裝器不以付費請求驗證資格。
 
-可修改 `prompts/` 內的角色提示詞再安裝。也可直接修改已安裝的角色 TOML，下一個角色程序就會採用；但安裝器更新時會停下保留手動修改。建議將變更同步回安裝包，再解除安裝後重新安裝；解除安裝會備份手動修改。
+可修改 `prompts/` 內的角色提示詞再安裝，也可直接修改已安裝 TOML。直接修改後，安裝器更新會停止，保留手動變更；建議將修改同步回安裝包，再解除安裝後重新安裝。解除安裝會備份修改。
 
-## 呼叫與分工
+## 分工方式
 
-短小任務由 Root 處理；可獨立交付的探索、研究與實作才委派。Architect 用於高影響方案、同一問題修復失敗兩次，以及重大跨模組修改完成前。已有結果則重用，避免重複探索或審查。
+Root 透過原生子代理工具選擇角色；有 `agent_type` 參數時指定角色名稱。短小任務由 Root 處理，可獨立交付的探索、研究及實作才委派。Architect 用於高影響方案、同一問題修復失敗兩次，以及重大跨模組修改完成前；已有證據則重用。
 
-Root 準備 UTF-8 任務檔，包含問題、必要證據、授權範圍、檔案所有權、驗收條件及回覆語言。角色不繼承目前聊天記錄：
+每次派工指定問題、必要證據、授權範圍、檔案所有權、驗收條件及回覆語言。偏好精簡任務說明，避免不必要的完整聊天複製。Worker 不負責 staging、commit 或遠端寫入，由 Root 依使用者授權處理。
 
-```powershell
-py -3 "$env:USERPROFILE\.codex\codex-orchestration\runner.py" explorer --cwd "C:\work\project" --task-file "C:\work\brief.txt"
-```
+- 分工規則建議每個 Root 同時最多 3 個子代理；這是提示詞規則，**並非本工具強制限制**。實際上限由既有原生設定及宿主可用名額決定。
+- 角色使用原生的等待、回報與生命週期管理；移除獨立 runner、slots 與 runs 目錄設計。
+- 權限依原生繼承機制及目前工作環境決定。探索／研究／審查角色的提示詞要求不修改檔案，但這不是額外的 sandbox 保證。
+- 子代理預設不再委派。角色或模型不可用時應回報限制，不宣稱已完成未執行的審查。
 
-若使用自訂 `CODEX_HOME`，替換上述 runner 路徑。Root 的安裝規則會自動帶入實際路徑。執行器回傳結果檔案路徑，Root 讀取結果後整合；結果不會以桌面版原生子代理出現。
+## 保留環境與解除安裝
 
-- Explorer、Researcher、Architect 使用 CLI 的 `read-only` sandbox；Worker 使用 `workspace-write`。均為非互動執行，`approval_policy=never`。
-- 子程序載入該全域目錄及工作目錄的適用設定／指示。Root 在桌面對話內取得的臨時權限、工具或訊息不會自動轉交；CLI 無法取得的工具會造成任務限制。
-- Runner 停用該程序的原生 agents，並禁止自身遞迴呼叫。Worker 不負責 staging、commit 或遠端寫入，由 Root 按使用者授權處理。
-- 3 個名額滿時由本機程序等待，不反覆呼叫模型。預設逾時 1800 秒，包含排隊，可用 `--timeout` 修改。逾時終止執行中的 CLI 程序樹。
-- 安裝／更新／解除安裝期間持有同一組鎖；有角色執行中時拒絕更新，以免刪除工作中的檔案。
+每次變更先備份，重複安裝相同設定不重寫檔案。解除安裝移除四個管理角色、manifest 及自己的 AGENTS 分工區塊；原始內容未被其他人修改時按原始位元組還原，外部新增規則會保留。備份、鎖檔及空目錄保留。
 
-## 解除安裝與復原
+備份 JSON 的 `before`／`after` 是 Base64 原始內容，`null` 表示原本不存在。僅備份本工具管理的檔案，不複製認證或主設定。
 
-解除安裝移除四個私有角色、runner、manifest 及自己的 AGENTS 分工區塊。若 AGENTS 其餘內容未變，還原原始位元組；外部新增的規則保留。結果、快照與鎖檔保留，可自行另存後刪除。
+寫入失敗會回復；意外中斷由 `pending.json` 記錄，下次操作先復原。若檔案另有外部修改，停止並保留現況與快照。有效的全域 `AGENTS.override.md`、`agents.enabled=false`、同名角色衝突或規則超出載入容量都會停止安裝，不自行改動原設定。
 
-每次實際變更先建立備份。備份 JSON 中 `before`／`after` 為 Base64 原始內容，`null` 代表不存在。僅備份本工具管理的檔案，不複製認證或主設定。
+更新或解除安裝前請結束舊子代理，完成後開啟新對話；安裝鎖只協調安裝器，不追蹤原生代理。若曾安裝舊版獨立 CLI 方案，先用原安裝包解除安裝；新版不自動改寫舊版安裝紀錄。
 
-中途失敗會回復；程序意外中斷由 `pending.json` 記錄，下次安裝／解除安裝先復原。偵測到外部修改時停止，保留檔案和快照。重複安裝相同設定不重寫檔案。有效的全域 `AGENTS.override.md`、管理檔案衝突或規則超過載入容量時會停止，不覆蓋。
+## 限制與驗證
 
-## 能保證與不能保證的範圍
+自動選用角色是提示詞行為，不能保證每次正確觸發。專案角色／設定、更高優先級指示、帳戶權限與原生名額可能影響結果。全域安裝檢查不掃描所有專案。
 
-**獨立 Fast 的參數路由已驗證。** 原生子代理在本機測試中繼承 Root 的 service tier，因此依使用者選擇改用獨立 CLI。全域設定與既有原生角色的保留、回復及解除安裝都有測試。
-
-提示詞能明確分工，但無法保證每次自動選對角色，也不保證 `large_read_guard` 攔截所有讀取路徑。此工具不增加攔截 Hook。需要確定使用某角色時，可明確要求 Root 使用該角色執行器。
-
-不能承諾零額外 token：全域分工規則、各程序的必要上下文與回覆仍耗用 token；Fast 也可能增加用量。獨立程序還會啟動自己的 CLI／MCP／Hook，可能增加時間及本機資源。保留設定不等於所有第三方外掛組合皆已實測。
-
-此設計符合「全域、可移除、各角色獨立 Fast」需求；若重視原生子代理 UI 與完整聊天繼承，則存在取捨。
-
-## 驗證
+本工具不增加讀取攔截 Hook，不能保證 `large_read_guard` 攔截所有路徑，也不能承諾零額外 token；分工規則、角色上下文及回覆仍耗用 token。
 
 ```powershell
 py -3 -m unittest discover -s tests -v
-py -3 tests/probe_cli.py "完整路徑\codex.exe"
+py -3 tests/probe_native.py "完整路徑\codex.exe"
 ```
 
-測試使用暫存全域目錄；整合測試使用真正 CLI 搭配本機回送 HTTP 模型替身，檢查實際送出的模型、effort、Fast，以及結果保存與解除安裝。不使用付費推論，不能證明帳戶資格、真實模型品質或實際費率。測試結果見 `VALIDATION.md`。
+測試使用暫存全域目錄。整合測試由本機 HTTP 模型替身驅動真正的原生派工，驗證角色模型、effort、Fast 跟隨 Root 及中文任務內容，不使用付費模型推論。測試結果見 `VALIDATION.md`；不代表真實帳戶資格、語義觸發率或模型品質已驗證。
 
-官方依據（2026-10-03 查閱）：[Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)、[Speed](https://learn.chatgpt.com/docs/agent-configuration/speed)、[Configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)。
+角色格式與原生管理依據：[OpenAI Docs — Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)（2026-10-03 查閱）。

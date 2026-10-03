@@ -11,8 +11,7 @@ import sys
 import tempfile
 import time
 import tomllib
-from contextlib import contextmanager, ExitStack
-import runner
+from contextlib import contextmanager
 
 PACKAGE = Path(__file__).resolve().parent
 ROLES = ("explorer", "researcher", "worker", "architect")
@@ -25,7 +24,7 @@ DESCRIPTIONS = {
 BEGIN = b"<!-- BEGIN CODEX-ORCHESTRATION v1 -->"
 END = b"<!-- END CODEX-ORCHESTRATION v1 -->"
 STATE = "codex-orchestration"
-MANAGED = {"AGENTS.md", f"{STATE}/runner.py", *(f"{STATE}/agents/{r}.toml" for r in ROLES)}
+MANAGED = {"AGENTS.md", *(f"agents/{r}.toml" for r in ROLES)}
 
 
 class Conflict(Exception):
@@ -96,8 +95,8 @@ def load_manifest(home: Path):
     if data is None:
         return None
     manifest = json.loads(data)
-    if manifest.get("version") != 1 or set(manifest.get("roles", {})) != set(ROLES):
-        raise Conflict("安裝紀錄格式不符；保留現況，請檢查 manifest.json。")
+    if manifest.get("version") != 2 or set(manifest.get("roles", {})) != set(ROLES):
+        raise Conflict("安裝紀錄不屬於原生角色版；請先用原安裝包解除安裝，現況保留。")
     return manifest
 
 
@@ -105,14 +104,29 @@ def load_manifest(home: Path):
 def lock(home: Path):
     state = home / STATE
     safe_path(home, f"{STATE}/manifest.json")
-    with ExitStack() as stack:
+    state.mkdir(parents=True, exist_ok=True)
+    with (state / "lock").open("a+b") as stream:
+        if os.fstat(stream.fileno()).st_size == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
         try:
-            stack.enter_context(runner.file_lock(state / "lock"))
-            for number in range(runner.MAX_PARALLEL):
-                stack.enter_context(runner.file_lock(state / f"slots/{number}.lock"))
-        except BlockingIOError as exc:
-            raise Conflict("有角色或安裝程序正在執行；請結束後重試。") from exc
-        yield
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise Conflict("有安裝程序正在執行；請結束後重試。") from exc
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
 
 
 def recover(home: Path):
@@ -159,14 +173,12 @@ def settings(package: Path) -> dict:
     if set(data) != set(ROLES):
         raise Conflict("settings.json 必須包含且僅包含 explorer、researcher、worker、architect。")
     for role, value in data.items():
-        if not isinstance(value, dict) or set(value) != {"model", "effort", "fast"}:
-            raise Conflict(f"{role} 必須設定 model、effort、fast。")
+        if not isinstance(value, dict) or set(value) != {"model", "effort"}:
+            raise Conflict(f"{role} 僅接受 model、effort；Fast 使用 Root 設定。")
         if not isinstance(value["model"], str) or not value["model"].strip():
             raise Conflict(f"{role}.model 必須是非空字串。")
         if value["effort"] not in {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}:
             raise Conflict(f"{role}.effort 不支援：{value['effort']}")
-        if type(value["fast"]) is not bool:
-            raise Conflict(f"{role}.fast 必須為 true 或 false。")
     return data
 
 
@@ -175,7 +187,6 @@ def render_role(package: Path, role: str, value: dict) -> bytes:
     fields = {
         "name": role, "description": DESCRIPTIONS[role],
         "model": value["model"], "model_reasoning_effort": value["effort"],
-        "service_tier": "fast" if value["fast"] else "default",
         "developer_instructions": prompt,
     }
     text = "# Managed by codex-orchestration; edit settings.json and rerun install.cmd.\n"
@@ -184,10 +195,9 @@ def render_role(package: Path, role: str, value: dict) -> bytes:
     return text.encode("utf-8")
 
 
-def routing_block(package: Path, current: bytes, home: Path) -> bytes:
+def routing_block(package: Path, current: bytes) -> bytes:
     newline = b"\r\n" if b"\r\n" in current else b"\n"
     body = (package / "prompts/routing.md").read_text(encoding="utf-8").strip()
-    body = body.replace("{{RUNNER}}", str(home / STATE / "runner.py"))
     return newline * 2 + BEGIN + newline + body.encode("utf-8").replace(b"\n", newline) + newline + END + newline
 
 
@@ -218,8 +228,19 @@ def preflight(home: Path, manifest):
     parsed = tomllib.loads(config.decode("utf-8-sig")) if config else {}
     if read(home / "AGENTS.override.md"):
         raise Conflict("AGENTS.override.md 會遮蔽 AGENTS.md；請先自行處理，安裝器不覆寫。")
-    # Private role files do not shadow or require native [agents] registrations.
-    runner.find_codex()
+    agents = parsed.get("agents", {})
+    if agents.get("enabled") is False:
+        raise Conflict("全域 agents.enabled=false；請自行啟用原生子代理後再安裝。")
+    for role in ROLES:
+        if role in agents:
+            raise Conflict(f"config.toml 已定義同名角色：{role}，未覆寫。")
+    owned = {home / f"agents/{r}.toml" for r in ROLES} if manifest else set()
+    for path in (home / "agents").glob("*.toml"):
+        if path in owned:
+            continue
+        name = tomllib.loads(path.read_text(encoding="utf-8-sig")).get("name")
+        if name in ROLES:
+            raise Conflict(f"已有同名自訂角色 {name}：{path}，未覆寫。")
 
 
 def install_plan(home: Path, package: Path):
@@ -227,13 +248,8 @@ def install_plan(home: Path, package: Path):
     preflight(home, manifest)
     config = settings(package)
     changes = {}
-    runner_relative = f"{STATE}/runner.py"
-    runner_current = read(safe_path(home, runner_relative))
-    if (not manifest and runner_current is not None) or (manifest and digest(runner_current) != manifest.get("runner")):
-        raise Conflict("runner.py 已存在或被手動修改；保留現況，請先解除安裝再更新。")
-    changes[runner_relative] = (package / "runner.py").read_bytes()
     for role in ROLES:
-        relative = f"{STATE}/agents/{role}.toml"
+        relative = f"agents/{role}.toml"
         current = read(safe_path(home, relative))
         if not manifest and current is not None:
             raise Conflict(f"既有檔案衝突，未覆寫：{relative}")
@@ -245,13 +261,13 @@ def install_plan(home: Path, package: Path):
         old_block = decode(manifest["block"])
         if (current or b"").count(old_block) != 1:
             raise Conflict("分工區塊曾被修改；先解除安裝以備份，再重新安裝。")
-        block = routing_block(package, current or b"", home)
+        block = routing_block(package, current or b"")
         changes["AGENTS.md"] = current.replace(old_block, block, 1)
         original = manifest["original_agents"]
     else:
         if BEGIN in (current or b"") or END in (current or b""):
             raise Conflict("AGENTS.md 已有標記但無安裝紀錄；未修改。")
-        block = routing_block(package, current or b"", home)
+        block = routing_block(package, current or b"")
         changes["AGENTS.md"] = (current or b"") + block
         original = encode(current)
     config_bytes = read(home / "config.toml")
@@ -260,9 +276,8 @@ def install_plan(home: Path, package: Path):
     if len(changes["AGENTS.md"]) > limit:
         raise Conflict(f"追加規則後 AGENTS.md 超過 project_doc_max_bytes={limit}，未截斷原文。")
     next_manifest = {
-        "version": 1, "original_agents": original, "block": encode(block),
-        "roles": {r: digest(changes[f"{STATE}/agents/{r}.toml"]) for r in ROLES},
-        "runner": digest(changes[runner_relative]),
+        "version": 2, "original_agents": original, "block": encode(block),
+        "roles": {r: digest(changes[f"agents/{r}.toml"]) for r in ROLES},
     }
     changes[f"{STATE}/manifest.json"] = json_bytes(next_manifest)
     return changes
@@ -275,8 +290,7 @@ def uninstall_plan(home: Path):
     current = read(safe_path(home, "AGENTS.md"))
     if current is None:
         raise Conflict("AGENTS.md 已被移除；保留其他檔案，請先恢復後重試。")
-    changes = {f"{STATE}/agents/{r}.toml": None for r in ROLES}
-    changes[f"{STATE}/runner.py"] = None
+    changes = {f"agents/{r}.toml": None for r in ROLES}
     changes["AGENTS.md"] = remove_block(current, manifest)
     changes[f"{STATE}/manifest.json"] = None
     return changes
@@ -290,13 +304,13 @@ def status(home: Path):
         print("上次操作中斷；下次安裝／解除安裝會先檢查並復原。")
     if manifest:
         for role in ROLES:
-            path = safe_path(home, f"{STATE}/agents/{role}.toml")
+            path = safe_path(home, f"agents/{role}.toml")
             content = read(path)
             if content is None:
                 print(f"{role}：檔案缺失")
                 continue
             data = tomllib.loads(content.decode("utf-8-sig"))
-            print(f"{role}：{data.get('model')} / {data.get('model_reasoning_effort')} / tier={data.get('service_tier')}" + ("（手動修改）" if digest(content) != manifest["roles"][role] else ""))
+            print(f"{role}：{data.get('model')} / {data.get('model_reasoning_effort')} / Fast 跟隨 Root" + ("（手動修改）" if digest(content) != manifest["roles"][role] else ""))
 
 
 def main(argv=None):

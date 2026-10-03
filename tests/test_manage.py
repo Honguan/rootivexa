@@ -26,7 +26,6 @@ class InstallerTests(unittest.TestCase):
         self.package = Path(self.temp.name) / "package"
         self.package.mkdir()
         shutil.copy(m.PACKAGE / "settings.json", self.package)
-        shutil.copy(m.PACKAGE / "runner.py", self.package)
         shutil.copytree(m.PACKAGE / "prompts", self.package / "prompts")
         self.config = b'model = "original"\r\n[plugins."token-optimizer@token-optimizer"]\r\nenabled = true\r\n'
         (self.home / "config.toml").write_bytes(self.config)
@@ -51,7 +50,7 @@ class InstallerTests(unittest.TestCase):
                 self.uninstall()
                 self.assertEqual(m.read(self.home / "AGENTS.md"), content)
                 self.assertEqual((self.home / "hooks.json").read_bytes(), b'{"unrelated":true}')
-                self.assertFalse(any((self.home / "codex-orchestration/agents").glob("*.toml")))
+                self.assertFalse(any((self.home / "agents").glob("*.toml")))
                 self.assertEqual((self.home / "config.toml").read_bytes(), self.config)
 
     def test_idempotent_install_and_uninstall(self):
@@ -63,50 +62,67 @@ class InstallerTests(unittest.TestCase):
         self.uninstall()
         self.assertEqual(m.uninstall_plan(self.home), {})
 
-    def test_models_efforts_and_individual_fast_are_independent(self):
+    def test_models_efforts_are_independent_and_fast_is_omitted(self):
         settings = m.settings(self.package)
-        settings["researcher"]["fast"] = True
         settings["worker"]["model"] = "gpt-6-luna"
         (self.package / "settings.json").write_bytes(m.json_bytes(settings))
         self.install()
         for role in m.ROLES:
-            d = tomllib.loads((self.home / f"codex-orchestration/agents/{role}.toml").read_text(encoding="utf-8"))
+            d = tomllib.loads((self.home / f"agents/{role}.toml").read_text(encoding="utf-8"))
             self.assertEqual(d["name"], role)
             self.assertEqual(d["model"], settings[role]["model"])
             self.assertEqual(d["model_reasoning_effort"], settings[role]["effort"])
-            self.assertEqual(d["service_tier"], "fast" if role == "researcher" else "default")
+            self.assertNotIn("service_tier", d)
 
     def test_reinstall_updates_managed_roles_preserving_later_user_instructions(self):
         self.install()
         with (self.home / "AGENTS.md").open("ab") as stream:
             stream.write(b"\n# New user policy\n")
         settings = m.settings(self.package)
-        settings["explorer"]["fast"] = True
+        settings["explorer"]["effort"] = "high"
         (self.package / "settings.json").write_bytes(m.json_bytes(settings))
         self.install()
-        self.assertIn(b'service_tier = "fast"', (self.home / "codex-orchestration/agents/explorer.toml").read_bytes())
+        self.assertIn(b'model_reasoning_effort = "high"', (self.home / "agents/explorer.toml").read_bytes())
         self.uninstall()
         self.assertEqual((self.home / "AGENTS.md").read_bytes(), b"\n# New user policy\n")
 
     def test_existing_native_roles_remain_unchanged(self):
         (self.home / "agents").mkdir()
         path = self.home / "agents/custom.toml"
-        path.write_bytes(b'name = "explorer"\n')
+        path.write_bytes(b'name = "unrelated"\n')
         self.install()
         self.uninstall()
-        self.assertEqual(path.read_bytes(), b'name = "explorer"\n')
+        self.assertEqual(path.read_bytes(), b'name = "unrelated"\n')
         self.assertIsNone(m.read(self.home / "AGENTS.md"))
 
-    def test_native_agents_config_is_preserved_but_instruction_override_is_reported(self):
+    def test_native_agents_conflicts_and_instruction_override_are_reported(self):
         for config in (b"[agents]\nenabled = false\n", b'[agents.explorer]\nconfig_file="x.toml"\n'):
             (self.home / "config.toml").write_bytes(config)
-            self.install()
-            self.uninstall()
+            with self.assertRaises(m.Conflict):
+                m.install_plan(self.home, self.package)
             self.assertEqual((self.home / "config.toml").read_bytes(), config)
         (self.home / "config.toml").write_bytes(self.config)
         (self.home / "AGENTS.override.md").write_bytes(b"override")
         with self.assertRaises(m.Conflict):
             m.install_plan(self.home, self.package)
+
+    def test_same_role_name_in_different_file_is_not_shadowed(self):
+        (self.home / "agents").mkdir()
+        path = self.home / "agents/custom.toml"
+        path.write_bytes(b'name = "explorer"\n')
+        with self.assertRaises(m.Conflict):
+            m.install_plan(self.home, self.package)
+        self.assertEqual(path.read_bytes(), b'name = "explorer"\n')
+
+    def test_cli_version_manifest_is_refused_without_deleting_anything(self):
+        path = self.home / m.STATE / "manifest.json"
+        m.atomic_write(path, m.json_bytes({"version": 1, "roles": dict.fromkeys(m.ROLES)}))
+        before = path.read_bytes()
+        with self.assertRaises(m.Conflict):
+            m.install_plan(self.home, self.package)
+        with self.assertRaises(m.Conflict):
+            m.uninstall_plan(self.home)
+        self.assertEqual(path.read_bytes(), before)
 
     def test_invalid_settings_fail_before_install(self):
         valid = m.settings(self.package)
@@ -116,11 +132,11 @@ class InstallerTests(unittest.TestCase):
             (self.package / "settings.json").write_bytes(m.json_bytes(data))
             with self.assertRaises(m.Conflict):
                 m.install_plan(self.home, self.package)
-            self.assertIsNone(m.read(self.home / "codex-orchestration/agents/worker.toml"))
+            self.assertIsNone(m.read(self.home / "agents/worker.toml"))
 
     def test_existing_filename_cannot_be_overwritten_even_if_name_differs(self):
-        (self.home / "codex-orchestration/agents").mkdir(parents=True)
-        (self.home / "codex-orchestration/agents/explorer.toml").write_bytes(b'name = "another_role"\n')
+        (self.home / "agents").mkdir(parents=True)
+        (self.home / "agents/explorer.toml").write_bytes(b'name = "another_role"\n')
         with self.assertRaises(m.Conflict):
             m.install_plan(self.home, self.package)
 
@@ -141,29 +157,29 @@ class InstallerTests(unittest.TestCase):
         def concurrent_write(path, data):
             real(path, data)
             if path.name == "explorer.toml":
-                real(self.home / "codex-orchestration/agents/researcher.toml", b"user edit")
+                real(self.home / "agents/researcher.toml", b"user edit")
         with m.lock(self.home), patch.object(m, "atomic_write", concurrent_write):
             with self.assertRaises(m.Conflict):
                 m.transaction(self.home, m.install_plan(self.home, self.package))
-        self.assertEqual((self.home / "codex-orchestration/agents/researcher.toml").read_bytes(), b"user edit")
+        self.assertEqual((self.home / "agents/researcher.toml").read_bytes(), b"user edit")
         self.assertTrue((self.home / m.STATE / "pending.json").exists())
 
     def test_manual_role_changes_block_update_but_uninstall_backs_them_up(self):
         self.install()
-        path = self.home / "codex-orchestration/agents/worker.toml"
+        path = self.home / "agents/worker.toml"
         edited = path.read_bytes() + b"\n# Manual customization\n"
         path.write_bytes(edited)
         with self.assertRaises(m.Conflict):
             m.install_plan(self.home, self.package)
         self.uninstall()
         backups = list((self.home / m.STATE / "backups").glob("*.json"))
-        self.assertTrue(any(m.decode(json.loads(p.read_text(encoding="utf-8")).get("codex-orchestration/agents/worker.toml", {}).get("before")) == edited for p in backups))
+        self.assertTrue(any(m.decode(json.loads(p.read_text(encoding="utf-8")).get("agents/worker.toml", {}).get("before")) == edited for p in backups))
 
     def test_edited_routing_block_can_be_removed_without_losing_outside_text(self):
         (self.home / "AGENTS.md").write_bytes(b"before")
         self.install()
         path = self.home / "AGENTS.md"
-        path.write_bytes(path.read_bytes().replace(b"Global agent delegation", b"User customization") + b"after")
+        path.write_bytes(path.read_bytes().replace(b"Global role delegation", b"User customization") + b"after")
         self.uninstall()
         self.assertTrue(path.read_bytes().startswith(b"before"))
         self.assertTrue(path.read_bytes().endswith(b"after"))
@@ -175,7 +191,7 @@ class InstallerTests(unittest.TestCase):
         path.write_bytes(path.read_bytes().replace(m.END, b"changed"))
         with self.assertRaises(m.Conflict):
             m.uninstall_plan(self.home)
-        self.assertTrue((self.home / "codex-orchestration/agents/explorer.toml").exists())
+        self.assertTrue((self.home / "agents/explorer.toml").exists())
 
     def test_write_failure_rolls_back(self):
         real = m.atomic_write
@@ -191,26 +207,26 @@ class InstallerTests(unittest.TestCase):
         with m.lock(self.home), patch.object(m, "atomic_write", fail_once):
             with self.assertRaises(OSError):
                 m.transaction(self.home, m.install_plan(self.home, self.package))
-        self.assertIsNone(m.read(self.home / "codex-orchestration/agents/explorer.toml"))
+        self.assertIsNone(m.read(self.home / "agents/explorer.toml"))
         self.assertIsNone(m.read(self.home / "AGENTS.md"))
         self.assertIsNone(m.load_manifest(self.home))
 
     def test_interrupted_transaction_recovery(self):
         with m.lock(self.home):
-            entry = {"codex-orchestration/agents/explorer.toml": {"before": None, "after": m.encode(b"partial")}}
+            entry = {"agents/explorer.toml": {"before": None, "after": m.encode(b"partial")}}
             m.atomic_write(self.home / m.STATE / "pending.json", m.json_bytes(entry))
-            m.atomic_write(self.home / "codex-orchestration/agents/explorer.toml", b"partial")
+            m.atomic_write(self.home / "agents/explorer.toml", b"partial")
             m.recover(self.home)
-        self.assertIsNone(m.read(self.home / "codex-orchestration/agents/explorer.toml"))
+        self.assertIsNone(m.read(self.home / "agents/explorer.toml"))
 
     def test_recovery_does_not_overwrite_external_edits(self):
         with m.lock(self.home):
-            entry = {"codex-orchestration/agents/explorer.toml": {"before": None, "after": m.encode(b"partial")}}
+            entry = {"agents/explorer.toml": {"before": None, "after": m.encode(b"partial")}}
             m.atomic_write(self.home / m.STATE / "pending.json", m.json_bytes(entry))
-            m.atomic_write(self.home / "codex-orchestration/agents/explorer.toml", b"user edit")
+            m.atomic_write(self.home / "agents/explorer.toml", b"user edit")
             with self.assertRaises(m.Conflict):
                 m.recover(self.home)
-            self.assertEqual((self.home / "codex-orchestration/agents/explorer.toml").read_bytes(), b"user edit")
+            self.assertEqual((self.home / "agents/explorer.toml").read_bytes(), b"user edit")
 
     def test_dry_run_is_read_only_and_global_only(self):
         with patch.dict(os.environ, {"CODEX_HOME": str(self.home)}), patch.object(m, "PACKAGE", self.package), contextlib.redirect_stdout(io.StringIO()):

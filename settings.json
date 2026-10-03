@@ -1,6 +1,6 @@
 {
-  "explorer": {"model": "gpt-6-luna", "effort": "xhigh", "fast": false},
-  "researcher": {"model": "gpt-6-luna", "effort": "xhigh", "fast": false},
-  "worker": {"model": "gpt-6.1-sol", "effort": "high", "fast": false},
-  "architect": {"model": "gpt-6-astra", "effort": "medium", "fast": false}
+  "explorer": {"model": "gpt-6-luna", "effort": "xhigh"},
+  "researcher": {"model": "gpt-6-luna", "effort": "xhigh"},
+  "worker": {"model": "gpt-6.1-sol", "effort": "high"},
+  "architect": {"model": "gpt-6-astra", "effort": "medium"}
 }
