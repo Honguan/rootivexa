@@ -22,4 +22,6 @@
 
 後續讀檔並行規則更新：21 項單元測試再次通過，並已套用至使用者已安裝的全域環境。僅更新 AGENTS 分工區塊及 manifest；逐位元組確認區塊外指示、config.toml、hooks.json 與四個角色 TOML 保持不變。每批最多 4 個獨立讀取／搜尋、Explorer 分區調查均為提示詞規則，未量測速度或 token 節省。
 
+依後續 Luna 指示再更新 Explorer 提示詞及 Root 派工規則：驗證全域僅變更 AGENTS 管理區塊、explorer.toml 的 developer_instructions 與 manifest；Explorer 模型／推理強度、其他三角色、主設定及區塊外指示保持不變。
+
 整合測試只驗證原生派工、角色設定與參數路由，不代表真實帳戶資格、模型品質、語義觸發率、所有第三方外掛組合或費用已驗證。每個 Root 最多 3 個子代理是分工提示詞；實際硬上限由原生環境控制。
