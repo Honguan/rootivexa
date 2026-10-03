@@ -1,6 +1,6 @@
 # Codex 全域原生角色安裝器
 
-開源套件 **1.0.0**，採 [MIT License](LICENSE)。本專案為社群工具，與 OpenAI 無隸屬關係。
+開源套件 **1.0.1**，採 [MIT License](LICENSE)。本專案為社群工具，與 OpenAI 無隸屬關係。
 
 Windows 一鍵安裝／解除安裝四種原生子代理。可個別設定模型與推理強度；**Fast 統一跟隨 Root**。不需要獨立 CLI 執行器，不新增 Hook、MCP 或 Skill。
 
@@ -71,7 +71,9 @@ py -3 manage.py uninstall --dry-run
 
 ## 分工方式
 
-Root 透過原生子代理工具選擇角色；有 `agent_type` 參數時指定角色名稱。短小任務由 Root 處理，可獨立交付的探索、研究及實作才委派。Architect 用於高影響方案、同一問題修復失敗兩次，以及重大跨模組修改完成前；已有證據則重用。
+派工前比較目前 Root 與目標角色實際使用的模型 ID。**模型完全相同時，預設由 Root 直接完成角色工作**，遵守該角色的任務限制與檢查方法；角色名稱或推理強度不同，本身不構成另開代理的理由，也不代表 Root 已切換推理強度。只有使用者明確要求獨立代理，或任務需要並行、隔離上下文、獨立審查、無法在本地滿足的角色設定時，才另開同模型子代理並說明原因。模型未知時不猜測，不自行認定別名相同。
+
+需要委派時，Root 透過原生子代理工具選擇角色；有 `agent_type` 參數時指定角色名稱。短小任務由 Root 處理，可獨立交付的探索、研究及實作才委派。Architect 檢查用於高影響方案、同一問題修復失敗兩次，以及重大跨模組修改完成前；模型相同且適用直接處理時由 Root 自查，明確標示為自查，不能宣稱獨立審查。已有證據則重用。
 
 每次派工指定問題、必要證據、授權範圍、檔案所有權、驗收條件及回覆語言。偏好精簡任務說明，避免不必要的完整聊天複製。Worker 不負責 staging、commit 或遠端寫入，由 Root 依使用者授權處理。
 
@@ -92,15 +94,15 @@ Luna Explorer 在自己的範圍內使用既有最佳化工具，每批並行最
 
 更新或解除安裝前請結束舊子代理，完成後開啟新對話；安裝鎖只協調安裝器，不追蹤原生代理。若曾安裝舊版獨立 CLI 方案，先用原安裝包解除安裝；新版不自動改寫舊版安裝紀錄。
 
-更新原生角色版：將自訂 `settings.json` 與 `prompts/` 保留到新版安裝包，再執行 `install.cmd`。套件版本與 manifest schema 不同；本版維持 schema 2。
+更新原生角色版：將自訂 `settings.json` 與角色提示詞合併至新版安裝包，再執行 `install.cmd`。請保留新版 `prompts/routing.md` 的派工規則，避免用整個舊 `prompts/` 覆蓋新版邏輯。套件版本與 manifest schema 不同；本版維持 schema 2。
 
 ## 建立開源發佈包
 
 ```powershell
 py -3 -m unittest discover -s tests -q
 py -3 build_release.py
-Get-FileHash dist/codex-orchestration-1.0.0.zip -Algorithm SHA256
-Get-Content dist/codex-orchestration-1.0.0.zip.sha256
+Get-FileHash dist/codex-orchestration-1.0.1.zip -Algorithm SHA256
+Get-Content dist/codex-orchestration-1.0.1.zip.sha256
 ```
 
 輸出包含 ZIP 與同名 `.zip.sha256`；核對兩者的雜湊值後即可分享。ZIP 使用明列的 20 個檔案，包含完整原始碼、MIT 授權、文件及測試。固定 ZIP 時間與權限，相同來源在相同 Python／zlib 環境可產生相同位元組。

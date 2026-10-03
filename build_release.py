@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 import zipfile
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 FILES = (
     ".gitignore", "LICENSE", "README.md", "VALIDATION.md", "CHANGELOG.md",
     "build_release.py", "manage.py", "settings.json",
