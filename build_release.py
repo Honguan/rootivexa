@@ -17,10 +17,10 @@ FILES = (
 def build(root: Path, output: Path) -> Path:
     sources = {name: (root / name).read_bytes() for name in FILES}
     output.mkdir(parents=True, exist_ok=True)
-    archive = output / f"codex-orchestration-{VERSION}.zip"
+    archive = output / f"rootivexa-{VERSION}.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as package:
         for name, data in sources.items():
-            entry = zipfile.ZipInfo(f"codex-orchestration/{name}", (2026, 10, 3, 0, 0, 0))
+            entry = zipfile.ZipInfo(f"rootivexa/{name}", (2026, 10, 3, 0, 0, 0))
             entry.create_system = 3
             entry.external_attr = 0o100644 << 16
             entry.compress_type = zipfile.ZIP_DEFLATED

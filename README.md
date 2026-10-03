@@ -1,6 +1,10 @@
-# Codex 全域原生角色安裝器
+# Rootivexa
+
+Codex 全域原生角色安裝器：由主模型協調探索、研究、實作與審查，同模型任務預設直接處理。
 
 開源套件 **1.0.1**，採 [MIT License](LICENSE)。本專案為社群工具，與 OpenAI 無隸屬關係。
+
+[GitHub 原始碼](https://github.com/Honguan/rootivexa) · [下載最新版本](https://github.com/Honguan/rootivexa/releases/latest)
 
 Windows 一鍵安裝／解除安裝四種原生子代理。可個別設定模型與推理強度；**Fast 統一跟隨 Root**。不需要獨立 CLI 執行器，不新增 Hook、MCP 或 Skill。
 
@@ -36,6 +40,8 @@ py -3 manage.py uninstall --dry-run
 ```
 
 只有全域模式。預設為 `%USERPROFILE%\.codex`；若已設定絕對路徑的 `CODEX_HOME`，使用該全域目錄。沒有專案安裝選項。
+
+專案名稱 Rootivexa 不改變既有 `codex-orchestration` 安裝紀錄目錄與 AGENTS 管理標記，原生角色舊版可依更新步驟沿用。
 
 ## 安裝結構
 
@@ -101,8 +107,8 @@ Luna Explorer 在自己的範圍內使用既有最佳化工具，每批並行最
 ```powershell
 py -3 -m unittest discover -s tests -q
 py -3 build_release.py
-Get-FileHash dist/codex-orchestration-1.0.1.zip -Algorithm SHA256
-Get-Content dist/codex-orchestration-1.0.1.zip.sha256
+Get-FileHash dist/rootivexa-1.0.1.zip -Algorithm SHA256
+Get-Content dist/rootivexa-1.0.1.zip.sha256
 ```
 
 輸出包含 ZIP 與同名 `.zip.sha256`；核對兩者的雜湊值後即可分享。ZIP 使用明列的 20 個檔案，包含完整原始碼、MIT 授權、文件及測試。固定 ZIP 時間與權限，相同來源在相同 Python／zlib 環境可產生相同位元組。

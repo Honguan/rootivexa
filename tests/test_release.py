@@ -24,8 +24,8 @@ class ReleaseTests(unittest.TestCase):
             with zipfile.ZipFile(first) as package:
                 self.assertIsNone(package.testzip())
                 self.assertEqual(package.namelist(), [
-                    f"codex-orchestration/{name}" for name in build_release.FILES
+                    f"rootivexa/{name}" for name in build_release.FILES
                 ])
                 for name in build_release.FILES:
-                    self.assertEqual(package.read(f"codex-orchestration/{name}"),
+                    self.assertEqual(package.read(f"rootivexa/{name}"),
                                      (root / name).read_bytes())
